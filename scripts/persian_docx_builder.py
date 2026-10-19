@@ -857,14 +857,17 @@ class PersianDocxBuilder:
         dir_val = direction if direction else self.default_direction
         is_rtl = dir_val in ["right-to-left", "rtl"]
 
+        # Build the table as a left-to-right grid and reverse the column order for RTL,
+        # so the first logical column (e.g. 'نقش') sits on the right in every viewer.
+        if is_rtl:
+            headers = list(headers)[::-1]
+            rows = [list(r)[::-1] for r in rows]
+            if col_widths:
+                col_widths = list(col_widths)[::-1]
         table = self.doc.add_table(rows=len(rows) + 1, cols=len(headers))
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
         tblPr = table._element.xpath('w:tblPr')[0]
-        if is_rtl:
-            tblBidi = OxmlElement('w:tblBidi')
-            tblBidi.set(qn('w:val'), '1')
-            tblPr.append(tblBidi)
 
         # Style Header Row
         hdr_cells = table.rows[0].cells
@@ -920,6 +923,13 @@ class PersianDocxBuilder:
             for row in table.rows:
                 for c_idx, width_cm in enumerate(col_widths):
                     row.cells[c_idx].width = Cm(width_cm)
+            # Also set the table grid and a fixed layout so Word and LibreOffice honor the widths
+            grid_cols = table._tbl.tblGrid.findall(qn('w:gridCol'))
+            for gc, width_cm in zip(grid_cols, col_widths):
+                gc.set(qn('w:w'), str(int(Cm(width_cm) / 635)))
+            layout = OxmlElement('w:tblLayout')
+            layout.set(qn('w:type'), 'fixed')
+            tblPr.append(layout)
 
         # Subtle borders
         set_table_borders(table, border_color_hex=self.palette['border'], sz="4")
